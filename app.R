@@ -80,9 +80,31 @@ server <- function(input, output) {
         obj <- xcmsObject()
         if (is.null(obj)) return(NULL)
         message("Calculating spectra")
-        return(do.call(rbind,
-                       peaksData(obj@spectra[msLevel(obj@spectra) == 1],
-                                 c("mz", "intensity", "retention_time", "inv_ion_mobility"))))
+        
+        ms1_data <- obj@spectra[msLevel(obj@spectra) == 1]
+        
+        if (all(c("mz", "intensity", "retention_time", "inv_ion_mobility") %in% peaksVariables(obj@spectra))){
+            sp <- do.call(rbind,
+                          peaksData(ms1_data,
+                                    c("mz", "intensity", "retention_time", "inv_ion_mobility")))
+        } else {
+            ## Failsafe-ish approach, but slower
+            pd <- peaksData(ms1_data, c("mz", "intensity"))
+            sp <- do.call(rbind,
+                lapply(seq_along(pd), 
+                    FUN = function(i, pd, rt, im){
+                        cbind(pd[[i]],
+                              rep(rt[i,1], nrow(pd[[i]])),
+                              rep(im[i,1], nrow(pd[[i]])))
+                    },
+                    pd = pd,
+                    rt = spectraData(ms1_data, c("rtime")),
+                    im = spectraData(ms1_data, c("inv_ion_mobility"))
+                )
+            )
+            colnames(sp) <- c("mz", "intensity", "retention_time", "inv_ion_mobility")
+        }
+        sp
     })
     
     proxy <- dataTableProxy('peaktable')
