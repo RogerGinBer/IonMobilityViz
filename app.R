@@ -10,8 +10,15 @@ library(dplyr)
 
 options(shiny.maxRequestSize=1000*1024^2)
 
-so_folder <- tempdir()
-so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
+
+if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
+   is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
+    so_folder <- tempdir()
+    so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
+} else {
+    so_file <- getOption("TIMSTOF_LIB", default = NA)
+    if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
+}
 setup_bruker_so(so_file)
 
 # Define UI for application that draws a histogram
