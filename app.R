@@ -1,15 +1,20 @@
 library(shiny)
 library(ggplot2)
-# library(shinyWidgets)
 library(cowplot)
 library(DT)
 library(Spectra)
 library(opentimsr)
 library(MsBackendTimsTof)
 library(dplyr)
+library(bslib)
+library(shinyWidgets)
+
+
+source("./utils.R")
 
 options(shiny.maxRequestSize=1000*1024^2)
 
+theme <- bslib::bs_theme(version = 4)
 
 if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
    is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
@@ -22,11 +27,55 @@ if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
 setup_bruker_so(so_file)
 
 # Define UI for application that draws a histogram
-ui <- navbarPage("Ion mobility data visualizer",
-                 tabPanel("Plot",
+ui <- navbarPage("Ion mobility data visualizer", 
+                 tags$style(
+                 "@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap');
+                    * {
+                        padding: 0;
+                        margin: 0;
+                        box-sizing: border-box;
+                        font-family: 'Source Sans Pro', sans-serif;
+                        font-size: 0.95rem
+                    }"
+                 ),
+                 
+                 tabPanel("Load your data (Start here!)", mainPanel(
+                     h1("Hi there!"),
+                     fileInput("datafile", label = "Enter a Spectra or xcmsExperiment object in an RDS format to get started",
+                               multiple = FALSE, accept = "rds")
+                 )),
+                 tabPanel("Raw data", sidebarLayout(
+                     sidebarPanel(
+                         # fluidRow(column(5, numericInput("rt_raw_st", label = "Retention time range", value = 5,min = 0,max = 10,step = 0.01)),
+                         #          column(5, numericInput("rt_raw_end", label = "\n", value = 5,min = 0,max = 10,step = 0.01))
+                         # ),
+                         sliderInput("rt_raw",
+                                     "Retention time range",
+                                     min = 1,
+                                     max = 50,
+                                     step = 0.01,
+                                     value = c(10, 20)),
+                         sliderInput("im_raw",
+                                     "Ion mobility range:",
+                                     min = 1,
+                                     max = 50,
+                                     step = 1e-6,
+                                     value = c(10, 20)),
+                         sliderInput("mz_raw",
+                                     "Mz range:",
+                                     min = 1,
+                                     max = 50,
+                                     step = 1e-6,
+                                     value = c(10, 20)),
+                         switchInput("peaks_plotBySample", "Plot different samples by color", value = FALSE, labelWidth = "60%"),
+                     ),
+                     mainPanel(
+                         plotOutput("rawPlot", height = "900px")
+                     )
+                 )),
+                 tabPanel("XCMS Peaks",
                           sidebarLayout(
                               sidebarPanel(
-                                  fileInput("datafile", label = "Enter xcmsExperiment in an RDS format", multiple = FALSE, accept = "rds"),
                                   sliderInput("rt",
                                               "Retention time range:",
                                               min = 1,
@@ -54,64 +103,71 @@ ui <- navbarPage("Ion mobility data visualizer",
                                   DT::dataTableOutput("peaktable"),
                                   plotOutput("outputPlot", height = "700px")
                               ))
-                 )
+                 ), theme = theme
 )
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-    
-    xcmsObject <- reactive({
+    dataObject <- reactive({
         infile <- input$datafile
         if (is.null(infile)) {
             # User has not uploaded a file yet
             return(NULL)
         }
-        xcmsExp <- readRDS(infile$datapath)
-        xcmsExp
+        
+        object <- readRDS(infile$datapath)
+        if(!any(class(object) %in% c("Spectra", "MsExperiment", "XcmsExperiment"))){
+            sendSweetAlert(title = "Error", 
+                           text = "The data could not be loaded, please ensure that the format is correct")
+            return(NULL)
+        }
+        sendSweetAlert(title = "Success!",
+                       text = "IM data was loaded successfully, now you can explore it in the other tabs.")
+        object
     })
     
     chromPks <- reactive({
-        obj <- xcmsObject()
+        obj <- dataObject()
         if (is.null(obj)) return(NULL)
+        if (!is(obj, "XcmsExperiment")) return(NULL)
         return(xcms::chromPeaks(obj))
     })
     
     spectra <- reactive({
-        obj <- xcmsObject()
+        obj <- dataObject()
         if (is.null(obj)) return(NULL)
         message("Calculating spectra")
+        if (!is(obj, "Spectra") & inherits(obj, "MsExperiment")) obj <- obj@spectra
         
-        ms1_data <- obj@spectra[msLevel(obj@spectra) == 1]
-        
-        if (all(c("mz", "intensity", "retention_time", "inv_ion_mobility") %in% peaksVariables(obj@spectra))){
-            sp <- do.call(rbind,
-                          peaksData(ms1_data,
-                                    c("mz", "intensity", "retention_time", "inv_ion_mobility")))
-        } else {
-            ## Failsafe-ish approach, but slower
-            pd <- peaksData(ms1_data, c("mz", "intensity"))
-            sp <- do.call(rbind,
-                lapply(seq_along(pd), 
-                    FUN = function(i, pd, rt, im){
-                        cbind(pd[[i]],
-                              rep(rt[i,1], nrow(pd[[i]])),
-                              rep(im[i,1], nrow(pd[[i]])))
-                    },
-                    pd = pd,
-                    rt = spectraData(ms1_data, c("rtime")),
-                    im = spectraData(ms1_data, c("inv_ion_mobility"))
-                )
-            )
-            colnames(sp) <- c("mz", "intensity", "retention_time", "inv_ion_mobility")
-        }
-        sp
+        ms1_data <- obj[msLevel(obj) == 1]
+        calculate_4d_matrix_from_Spectra(ms1_data)
     })
     
-    proxy <- dataTableProxy('peaktable')
-    
-    observeEvent(input$removeSelection, {
-        selectRows(proxy, NULL)
+    observeEvent(spectra(),{
+        df <- spectra()
+        updateSliderInput(inputId = "rt_raw",
+                          min = round(min(df[,"retention_time"], 2)),
+                          max = round(max(df[,"retention_time"]), 2))
+        updateSliderInput(inputId = "mz_raw",
+                          min = round(min(df[,"mz"]), 2),
+                          max = round(max(df[,"mz"]), 2))
+        updateSliderInput(inputId = "im_raw",
+                          min = round(min(df[,"inv_ion_mobility"]), 2),
+                          max = round(max(df[,"inv_ion_mobility"]), 2))
     })
+    
+    rawPlot <- reactive({
+        if(is.null(spectra())){return(NULL)}
+        s <- as.data.frame(spectra())
+        data <- dplyr::filter(s,
+                              dplyr::between(retention_time, as.numeric(input$rt_raw[[1]]), as.numeric(input$rt_raw[[2]])),
+                              dplyr::between(mz, as.numeric(input$mz_raw[[1]]), as.numeric(input$mz_raw[[2]])),
+                              dplyr::between(inv_ion_mobility, as.numeric(input$im_raw[[1]]), as.numeric(input$im_raw[[2]])))
+        if(nrow(data) == 0){return(NULL)}
+        if(nrow(data) > 1e4){message("Too many datapoints"); return(NULL)}
+        create_marginal_plot(data)
+    })
+    output$rawPlot <- renderPlot(rawPlot())
     
     output$lengthHistogram <- renderPlot({
         pks <- chromPks()
@@ -121,7 +177,10 @@ server <- function(input, output) {
             ggtitle("Peak length distribution")
     })
     
+    proxy <- dataTableProxy('peaktable')
     output$peaktable <- renderDataTable(chromPks())
+    # Reset peak table selection
+    observeEvent(input$removeSelection, {selectRows(proxy, NULL)})
     
     observeEvent(chromPks(),{
         updateSliderInput(inputId = "rt",
@@ -155,39 +214,15 @@ server <- function(input, output) {
     
     plot <- reactive({
         if(is.null(spectra())){return(NULL)}
-        
         s <- as.data.frame(spectra())
         data <- dplyr::filter(s,
                               dplyr::between(retention_time, as.numeric(input$rt[[1]]), as.numeric(input$rt[[2]])),
                               dplyr::between(mz, as.numeric(input$mz[[1]]), as.numeric(input$mz[[2]])),
                               dplyr::between(inv_ion_mobility, as.numeric(input$im[[1]]), as.numeric(input$im[[2]])))
-        
         if(nrow(data) == 0){return(NULL)}
         if(nrow(data) > 1e4){message("Too many datapoints"); return(NULL)}
-        
-        
-        main_rtmz <- ggplot(data) + geom_point(aes(x=retention_time, y=mz, color = log10(intensity))) + theme_minimal() + theme(legend.position = "none") 
-        main_immz <- ggplot(data) + geom_point(aes(x=inv_ion_mobility, y=mz, color = log10(intensity)))  + theme_minimal() +theme(legend.position = "none") 
-        
-        
-        margin_rt <- do.call(cbind, summarize(group_by(data, retention_time), intensity = sum(intensity)))  
-        margin_rt_plot <- ggplot(as.data.frame(margin_rt)) + geom_line(aes(x=retention_time, y=intensity)) + theme_minimal()
-        
-        margin_im <- do.call(cbind, summarize(group_by(data, inv_ion_mobility), intensity = sum(intensity))) 
-        margin_im_plot <- ggplot(as.data.frame(margin_im)) + geom_line(aes(x=inv_ion_mobility, y=intensity)) + theme_minimal()
-        
-        margin_mz <- do.call(cbind, summarize(group_by(data, mz), intensity = sum(intensity))) 
-        margin_mz_plot <- ggplot(as.data.frame(margin_mz)) + geom_point(aes(x=mz, y=intensity)) + coord_flip() + theme_minimal()
-        
-        
-        plot <- cowplot::plot_grid(margin_im_plot, margin_rt_plot, NULL,
-                                   main_immz,      main_rtmz,      margin_mz_plot,
-                                   rel_heights = c(0.3, 0.7),
-                                   rel_widths = c(0.4, 0.4, 0.2),
-                                   nrow = 2, ncol = 3)
-        return(plot)
+        create_marginal_plot(data)
     })
-    
     output$outputPlot <- renderPlot(plot())
     
     output$downloadPlot <- downloadHandler(
