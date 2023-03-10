@@ -9,3 +9,9 @@ install.packages("BiocManager")
 install.packages("devtools")
 install.packages("bslib")
 install.packages("shinyWidgets")
+install.packages("gert")
+install.packages("gh")
+
+## Bruker MS data interface
+install.packages("opentims")
+

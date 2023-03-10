@@ -1,8 +1,4 @@
-## Special dependencies
-install.packages("gert")
-install.packages("gh")
-install.packages("devtools")
+## Special dependencies that might change more often
 
 BiocManager::install('Spectra')
-devtools::install_github("michalsta/opentims", subdir="opentimsr")
-devtools::install_github('rformassspectrometry/MsBackendTimsTof')
+remotes::install_github('rformassspectrometry/MsBackendTimsTof')

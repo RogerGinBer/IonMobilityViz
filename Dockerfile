@@ -2,6 +2,8 @@ FROM rocker/shiny:latest
 
 LABEL Description="LC-IM-MS data visualization tool in R / Shiny "
 
+RUN echo
+
 ## Stable dependencies
 ADD install.R /tmp
 RUN R -e "source('/tmp/install.R')"
@@ -10,6 +12,4 @@ RUN R -e "source('/tmp/install.R')"
 ADD install2.R /tmp
 RUN R -e "source('/tmp/install2.R')"
 
-ADD app.R /srv/shiny-server/IonMobilityViz/
-
-RUN R -e ""
+COPY --chown=shiny:shiny app.R utils.R /srv/shiny-server/IonMobilityViz/
