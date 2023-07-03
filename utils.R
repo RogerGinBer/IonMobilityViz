@@ -4,21 +4,15 @@ calculate_4d_matrix_from_Spectra <- function(Spectra){
                       peaksData(Spectra,
                                 c("mz", "intensity", "retention_time", "inv_ion_mobility")))
     } else {
-        ## Failsafe-ish approach, but slower
+         
         pd <- peaksData(Spectra, c("mz", "intensity"))
-        sp <- do.call(rbind,
-                      lapply(seq_along(pd), 
-                             FUN = function(i, pd, rt, im){
-                                 cbind(pd[[i]],
-                                       rep(rt[i,1], nrow(pd[[i]])),
-                                       rep(im[i,1], nrow(pd[[i]])))
-                             },
-                             pd = pd,
-                             rt = spectraData(Spectra, c("rtime")),
-                             im = spectraData(Spectra, c("inv_ion_mobility"))
-                             )
-                      )
+        n <- sapply (pd, nrow)
+        sp <- cbind(as.data.frame(pd)[,c("mz", "intensity")], 
+                     rep(spectraData(Spectra, "rtime"), n),
+                     rep(spectraData(Spectra, "inv_ion_mobility"), n))
         colnames(sp) <- c("mz", "intensity", "retention_time", "inv_ion_mobility")
+        sp <- sapply(sp, function(x) x)
+        
     }
     sp
 }
