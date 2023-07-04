@@ -100,6 +100,17 @@ ui <- navbarPage("Ion mobility data visualizer",
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+    
+    #for shorter startup time 
+    if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
+       is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
+        so_folder <- tempdir()
+        so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
+    } else {
+        so_file <- getOption("TIMSTOF_LIB", default = NA)
+        if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
+    }
+    
     dataObject <- reactive({
         infile <- input$datafile
         if (is.null(infile)) {
@@ -224,15 +235,6 @@ server <- function(input, output) {
         })
 }
 
-#for shorter startup time ?
-if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
-   is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
-  so_folder <- tempdir()
-  so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
-} else {
-  so_file <- getOption("TIMSTOF_LIB", default = NA)
-  if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
-}
 setup_bruker_so(so_file)
 # Run the application 
 shinyApp(ui = ui, server = server)
