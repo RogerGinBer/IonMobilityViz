@@ -110,6 +110,7 @@ server <- function(input, output) {
         so_file <- getOption("TIMSTOF_LIB", default = NA)
         if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
     }
+    setup_bruker_so(so_file)
     
     dataObject <- reactive({
         infile <- input$datafile
@@ -235,6 +236,6 @@ server <- function(input, output) {
         })
 }
 
-setup_bruker_so(so_file)
+
 # Run the application 
 shinyApp(ui = ui, server = server)
