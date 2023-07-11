@@ -2,6 +2,9 @@ FROM rocker/shiny:latest
 
 LABEL Description="LC-IM-MS data visualization tool in R / Shiny "
 
+## Get igraph dependency
+RUN apt-get -y update && apt-get -y install libglpk-dev  libnetcdf-dev
+
 RUN echo
 
 ## Stable dependencies

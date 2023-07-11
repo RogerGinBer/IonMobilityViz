@@ -16,15 +16,7 @@ options(shiny.maxRequestSize=1000*1024^2)
 
 theme <- bslib::bs_theme(version = 4)
 
-if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
-   is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
-    so_folder <- tempdir()
-    so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
-} else {
-    so_file <- getOption("TIMSTOF_LIB", default = NA)
-    if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
-}
-setup_bruker_so(so_file)
+
 
 # Define UI for application that draws a histogram
 ui <- navbarPage("Ion mobility data visualizer", 
@@ -108,6 +100,18 @@ ui <- navbarPage("Ion mobility data visualizer",
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+    
+    #for shorter startup time 
+    if(is.na(getOption("TIMSTOF_LIB", default = NA)) &
+       is.na(Sys.getenv("TIMSTOF_LIB", unset = NA))) {
+        so_folder <- tempdir()
+        so_file <- download_bruker_proprietary_code(so_folder, method = "wget")
+    } else {
+        so_file <- getOption("TIMSTOF_LIB", default = NA)
+        if(is.na(so_file)) so_file <- Sys.getenv("TIMSTOF_LIB", unset = NA)
+    }
+    setup_bruker_so(so_file)
+    
     dataObject <- reactive({
         infile <- input$datafile
         if (is.null(infile)) {
@@ -231,6 +235,7 @@ server <- function(input, output) {
             ggsave(file, plot = plot(), device = "svg", width = 10, height = 7)
         })
 }
+
 
 # Run the application 
 shinyApp(ui = ui, server = server)
